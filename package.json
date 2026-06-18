@@ -1,0 +1,37 @@
+{
+  "name": "transcode",
+  "version": "1.0.0",
+  "description": "Transcode application to handle media files",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "nodemon --watch '*.ts' --exec ts-node index.ts",
+    "test": "npm run build && node --test dist/test/transcode.test.js"
+  },
+  "keywords": [
+    "express",
+    "node",
+    "typescript",
+    "ffmpeg",
+    "media",
+    "transcoding"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.21.2",
+    "form-data": "^4.0.6",
+    "multer": "^2.2.0",
+    "undici": "^8.5.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^22.10.1",
+    "nodemon": "^3.1.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  }
+}
