@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.BIND || 'localhost';
 
 const command = "ffmpeg -hwaccel vaapi -hwaccel_output_format vaapi -i {input_file} -vf 'scale_vaapi=format=p010' -c:v hevc_vaapi -profile:v 2 -rc_mode CQP -global_quality 24 -c:a aac -f mp4 -movflags frag_keyframe+empty_moov -bsf:a aac_adtstoasc -";
 
@@ -100,12 +101,10 @@ app.post('/transcode', upload.single('file'), (req: Request, res: Response) => {
 });
 
 if (require.main === module) {
-  const server = app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`Server is running on http://${HOST}:${PORT}`);
   });
-  // Set timeouts to 15 minutes (600,000 ms) so Node waits for the full upload
-  server.headersTimeout = 900000;
-  server.requestTimeout = 900000;// Set timeouts to 15 minutes (900,000 ms) so Node waits for the full upload
+  // Set timeouts to 15 minutes (900,000 ms) so Node waits for the full upload
   server.headersTimeout = 900000;
   server.requestTimeout = 900000;
 }
