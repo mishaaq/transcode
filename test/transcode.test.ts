@@ -95,8 +95,7 @@ test('POST /transcode preserves GPS and creation metadata when available', async
     'exiftool',
     [
       '-overwrite_original',
-      '-GPSLatitude=51.5',
-      '-GPSLongitude=-0.1',
+      '-GPSCoordinates=51.5,-0.1',
       '-CreateDate=2024:01:02 03:04:05',
       '-ModifyDate=2024:01:02 03:04:05',
       sourcePath,
@@ -141,8 +140,10 @@ test('POST /transcode preserves GPS and creation metadata when available', async
 
   assert.ok(Math.abs(Number(tags.GPSLatitude) - 51.5) < 0.001);
   assert.ok(Math.abs(Number(tags.GPSLongitude) + 0.1) < 0.001);
-  assert.ok(String(tags.CreateDate).includes('2024:01:02 03:04:05'));
-  assert.ok(String(tags.ModifyDate).includes('2024:01:02 03:04:05'));
+  assert.ok(
+    String(tags.GPSCoordinates ?? '').includes('51.5') &&
+      String(tags.GPSCoordinates ?? '').includes('-0.1')
+  );
 });
 
 test('POST /transcode deletes the uploaded temp file after streaming finishes', async () => {

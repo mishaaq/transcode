@@ -170,9 +170,20 @@ app.post('/transcode', (req: Request, res: Response) => {
 function copyMetadata(inputFile: string, outputFile: string, callback: (err: Error | null) => void): void {
   const exiftool = spawn('exiftool', [
     '-overwrite_original',
+    '-api',
+    'LargeFileSupport=1',
     '-TagsFromFile',
     inputFile,
-    '-all:all',
+    '-Keys:all',
+    '-UserData:all',
+    '-CreateDate<CreateDate',
+    '-ModifyDate<ModifyDate',
+    '-Track*Date<Track*Date',
+    '-Media*Date<Media*Date',
+    '-Keys:CreationDate<CreateDate',
+    '-Keys:CreationDate<Keys:CreationDate',
+    '-Keys:GPSCoordinates<GPSCoordinates',
+    '-UserData:GPSCoordinates<GPSCoordinates',
     outputFile,
   ]);
 
