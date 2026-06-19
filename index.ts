@@ -9,16 +9,8 @@ const PORT = Number(process.env.PORT) || 3000;
 
 const command = "ffmpeg -hwaccel vaapi -hwaccel_output_format vaapi -i {input_file} -vf 'scale_vaapi=format=p010' -c:v hevc_vaapi -profile:v 2 -rc_mode CQP -global_quality 24 -c:a aac -f mp4 -movflags frag_keyframe+empty_moov -bsf:a aac_adtstoasc -";
 
-const storage = multer.diskStorage({
-  filename: (_req, file, cb) => {
-    const timestamp = Date.now();
-    const ext = path.extname(file.originalname) || '.mp4';
-    cb(null, `${timestamp}-${file.fieldname}${ext}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  dest: '/tmp/transode-uploads',
   limits: {
     fileSize: Infinity,
   },
