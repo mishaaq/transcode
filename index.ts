@@ -25,6 +25,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.post('/transcode', (req: Request, res: Response) => {
   const bb = busboy({ headers: req.headers, limits: { files: 1 } });
   let fileReceived = false;
+  let fileSent = false;
 
   bb.on('file', (_name, fileStream, info) => {
     fileReceived = true;
@@ -83,6 +84,15 @@ app.post('/transcode', (req: Request, res: Response) => {
           console.debug(`Finished sending transcoded file. Cleaning up temporary files.`);
           deleteFile(inputFilePath);
           deleteFile(outputFilePath);
+          fileSent = true;
+        });
+
+        req.on('close', () => {
+          if (!fileSent) {
+            console.debug('Client disconnected before transcoded file was fully sent. Cleaning up temporary files.');
+            deleteFile(inputFilePath);
+            deleteFile(outputFilePath);
+          }
         });
       });
     });
@@ -110,6 +120,13 @@ app.post('/transcode', (req: Request, res: Response) => {
         });
       } else {
         res.destroy(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+
+    req.on('close', () => {
+      if (!fileReceived) {
+        console.debug('Client disconnected before file upload completed. Cleaning up temporary files.');
+        deleteFile(inputFilePath);
       }
     });
   });
