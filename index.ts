@@ -1,104 +1,193 @@
 import express, { Request, Response } from 'express';
-import fs from 'fs';
-import multer from 'multer';
+import fs, { PathLike } from 'fs';
+import busboy from 'busboy';
 import path from 'path';
 import { spawn } from 'child_process';
+import { deleteFile } from './utils';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.BIND || 'localhost';
 
-const command = "ffmpeg -hwaccel vaapi -hwaccel_output_format vaapi -i {input_file} -vf 'scale_vaapi=format=p010' -c:v hevc_vaapi -profile:v 2 -rc_mode CQP -global_quality 24 -c:a aac -f mp4 -movflags frag_keyframe+empty_moov -bsf:a aac_adtstoasc -";
+type SuccessCallback = [outputFilePath: PathLike, error: null];
+type ErrorCallback = [outputFilePath: null, error: Error];
 
-const upload = multer({
-  dest: '/tmp/transode-uploads',
-  limits: {
-    fileSize: Infinity,
-  },
-});
+type TranscodeCallback = (...args: SuccessCallback | ErrorCallback) => void;
+
+if (!fs.existsSync('/tmp/transcode')) {
+  fs.mkdirSync('/tmp/transcode', 0o777);
+}
 
 app.get('/', (_req: Request, res: Response) => {
   res.send('Transcode is running!');
 });
 
-app.post('/transcode', upload.single('file'), (req: Request, res: Response) => {
-  const inputFile = req.file;
+app.post('/transcode', (req: Request, res: Response) => {
+  const bb = busboy({ headers: req.headers, limits: { files: 1 } });
+  let fileReceived = false;
 
-  if (!inputFile) {
-    res.status(400).json({
-      error: 'No file uploaded.',
+  bb.on('file', (_name, fileStream, info) => {
+    fileReceived = true;
+    const { filename } = info;
+    const inputFilePath = path.join('/tmp/transcode', path.basename(filename));
+
+    const writeStream = fs.createWriteStream(inputFilePath);
+    fileStream.pipe(writeStream);
+
+    writeStream.on('finish', async () => {
+      console.debug(`File [${filename}] saved to temporary location.`);
+
+      transcodeFile(inputFilePath, (outputFilePath, err) => {
+        if (err) {
+          console.error('Error during transcoding:', err);
+          if (!res.headersSent) {
+            res.status(500).json({
+              error: 'Error processing file upload.',
+              details: err instanceof Error ? err.message : String(err),
+            });
+          } else {
+            res.destroy(err instanceof Error ? err : new Error(String(err)));
+          }
+          deleteFile(inputFilePath);
+          return;
+        }
+
+        const stat = fs.statSync(outputFilePath);
+
+        res.writeHead(200, {
+          'Content-Type': 'video/mp4',
+          'Content-Length': stat.size,
+          'Cache-Control': 'no-cache',
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Disposition': `attachment; filename="${path.basename(inputFilePath, path.extname(inputFilePath))}-out.mp4"`,
+        })
+
+        const readStream = fs.createReadStream(outputFilePath);
+        readStream.pipe(res);
+
+        readStream.on('error', (err) => {
+          console.error('Error sending transcoded file:', err);
+          if (!res.headersSent) {
+            res.status(500).json({
+              error: 'Error sending transcoded file.',
+              details: err instanceof Error ? err.message : String(err),
+            });
+          } else {
+            res.destroy(err instanceof Error ? err : new Error(String(err)));
+          }
+          deleteFile(inputFilePath);
+          deleteFile(outputFilePath);
+        });
+        
+        res.on('finish', () => {
+          console.debug(`Finished sending transcoded file. Cleaning up temporary files.`);
+          deleteFile(inputFilePath);
+          deleteFile(outputFilePath);
+        });
+      });
     });
-    return;
-  }
 
-  const originalFileName = inputFile.originalname || 'output.mp4';
-  const originalBaseName = path.parse(originalFileName).name || 'output';
-  const attachmentFileName = `${originalBaseName}-out.mp4`;
-  const filePath = inputFile.path;
-  const commandToRun = command.replace('{input_file}', filePath);
+    fileStream.on('error', (err) => {
+      console.error('Error receiving file stream:', err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Error receiving file stream.',
+          details: err instanceof Error ? err.message : String(err),
+        });
+      } else {
+        res.destroy(err instanceof Error ? err : new Error(String(err)));
+      }
+      writeStream.end();
+      deleteFile(inputFilePath);
+    });
 
-  const cleanupUploadedFile = () => {
-    fs.unlink(filePath, (err) => {
-      if (err && err.code !== 'ENOENT') {
-        console.error(`Failed to delete uploaded file ${filePath}:`, err);
+    writeStream.on('error', (err) => {
+      console.error('Error writing file to disk:', err);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Error writing file to disk.',
+          details: err instanceof Error ? err.message : String(err),
+        });
+      } else {
+        res.destroy(err instanceof Error ? err : new Error(String(err)));
       }
     });
-  };
-
-  const ffmpeg = spawn(commandToRun, {
-    shell: true,
   });
 
-  if (!ffmpeg.stdout || !ffmpeg.stderr) {
-    cleanupUploadedFile();
-    res.status(500).json({
-      error: 'Failed to start transcoding process.',
-    });
-    return;
-  }
-
-  let ffmpegError = '';
-
-  ffmpeg.stderr.on('data', (chunk) => {
-    ffmpegError += chunk.toString();
-  });
-
-  ffmpeg.on('error', (err) => {
-    ffmpegError += err.message;
-    cleanupUploadedFile();
+  bb.on('error', (err) => {
+    console.error('Error processing file upload:', err);
     if (!res.headersSent) {
       res.status(500).json({
-        error: 'Failed to start transcoding process.',
-        details: err.message,
+        error: 'Error processing file upload.',
+        details: err instanceof Error ? err.message : String(err),
+      });
+    } else {
+      res.destroy(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
+
+  bb.on('filesLimit', () => {
+    console.error('Too many files uploaded.');
+    if (!res.headersSent) {
+      res.status(400).json({
+        error: 'Too many files uploaded. Only one file is allowed.',
+      });
+    } else {
+      res.destroy(new Error('Too many files uploaded. Only one file is allowed.'));
+    }
+  });
+
+  bb.on('close', () => {
+    if (!fileReceived) {
+      res.status(400).json({
+        error: 'No file uploaded.',
       });
       return;
     }
-
-    res.destroy(err);
   });
 
-  res.writeHead(200, {
-    'Content-Type': 'video/mp4',
-    'Cache-Control': 'no-cache',
-    'X-Content-Type-Options': 'nosniff',
-    'Content-Disposition': `attachment; filename="${attachmentFileName}"`,
-    'Transfer-Encoding': 'chunked',
-  });
-
-  ffmpeg.stdout.pipe(res);
-
-  res.on('close', () => {
-    ffmpeg.kill('SIGTERM');
-  });
-
-  ffmpeg.on('close', (code) => {
-    cleanupUploadedFile();
-    if (code !== 0 && !res.writableEnded) {
-      const message = ffmpegError.trim() || `ffmpeg exited with code ${code}`;
-      res.destroy(new Error(message));
-    }
-  });
+  req.pipe(bb);
 });
+
+function transcodeFile(filePath: string, callback: TranscodeCallback): void {
+  const outputFile = filePath + '-transcoded.mp4';
+
+  const ffmpeg = spawn('ffmpeg', [
+    '-hwaccel',
+    'vaapi',
+    '-hwaccel_output_format',
+    'vaapi',
+    '-i',
+    filePath,
+    '-vf',
+    'scale_vaapi=format=p010',
+    '-c:v',
+    'hevc_vaapi',
+    '-profile:v',
+    '2',
+    '-rc_mode',
+    'CQP',
+    '-global_quality',
+    '25',
+    '-c:a',
+    'aac',
+    outputFile,
+  ]);
+
+  ffmpeg.on('error', (err) => {
+    callback(null, err);
+  });
+
+  ffmpeg.on('exit', (code) => {
+    if (code !== 0) {
+      console.error(`ffmpeg exited with code ${code}`);
+      deleteFile(outputFile);
+      callback(null, new Error(`ffmpeg exited with code ${code}`));
+      return;
+    }
+    callback(outputFile, null);
+  });
+};
 
 if (require.main === module) {
   const server = app.listen(PORT, HOST, () => {

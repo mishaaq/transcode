@@ -7,7 +7,7 @@ import { once } from 'events';
 import { request } from 'undici';
 import FormData from 'form-data';
 
-import { app } from '../index';
+import { app } from '../index.js';
 
 const inputFixturePath = path.resolve(process.cwd(), 'test', 'fixture', 'input.mp4');
 
