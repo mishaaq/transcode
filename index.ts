@@ -108,9 +108,14 @@ app.post('/transcode', upload.single('file'), (req: Request, res: Response) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
   });
+  // Set timeouts to 15 minutes (600,000 ms) so Node waits for the full upload
+  server.headersTimeout = 900000;
+  server.requestTimeout = 900000;// Set timeouts to 15 minutes (900,000 ms) so Node waits for the full upload
+  server.headersTimeout = 900000;
+  server.requestTimeout = 900000;
 }
 
 export { app };
