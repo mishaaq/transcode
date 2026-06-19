@@ -58,6 +58,31 @@ test('POST /transcode streams transcoded bytes during processing', async () => {
   assert.ok(!responseBody.equals(buffer));
 });
 
+test('POST /transcode uses the original filename stem for the download attachment', async () => {
+  const buffer = fs.readFileSync(inputFixturePath);
+  const address = server!.address();
+  assert.ok(address && typeof address !== 'string');
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  const form = new FormData();
+  form.append('file', buffer, {
+    filename: 'sample-video.mp4',
+    contentType: 'video/mp4',
+  });
+
+  const response = await request(`${baseUrl}/transcode`, {
+    method: 'POST',
+    body: form,
+    headers: form.getHeaders(),
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(
+    response.headers['content-disposition'],
+    'attachment; filename="sample-video-out.mp4"'
+  );
+});
+
 test('POST /transcode deletes the uploaded temp file after streaming finishes', async () => {
   const buffer = fs.readFileSync(inputFixturePath);
   const tempDir = os.tmpdir();

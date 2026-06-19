@@ -38,6 +38,9 @@ app.post('/transcode', upload.single('file'), (req: Request, res: Response) => {
     return;
   }
 
+  const originalFileName = inputFile.originalname || 'output.mp4';
+  const originalBaseName = path.parse(originalFileName).name || 'output';
+  const attachmentFileName = `${originalBaseName}-out.mp4`;
   const filePath = inputFile.path;
   const commandToRun = command.replace('{input_file}', filePath);
 
@@ -85,7 +88,7 @@ app.post('/transcode', upload.single('file'), (req: Request, res: Response) => {
     'Content-Type': 'video/mp4',
     'Cache-Control': 'no-cache',
     'X-Content-Type-Options': 'nosniff',
-    'Content-Disposition': `attachment; filename="output.mp4"`,
+    'Content-Disposition': `attachment; filename="${attachmentFileName}"`,
     'Transfer-Encoding': 'chunked',
   });
 
