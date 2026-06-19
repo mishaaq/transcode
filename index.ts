@@ -52,6 +52,7 @@ app.post('/transcode', (req: Request, res: Response) => {
           deleteFile(inputFilePath);
           return;
         }
+        console.debug(`Transcoding completed. Output file: ${outputFilePath}`);
 
         const stat = fs.statSync(outputFilePath);
 
@@ -166,6 +167,28 @@ app.post('/transcode', (req: Request, res: Response) => {
   req.pipe(bb);
 });
 
+function copyMetadata(inputFile: string, outputFile: string, callback: (err: Error | null) => void): void {
+  const exiftool = spawn('exiftool', [
+    '-overwrite_original',
+    '-TagsFromFile',
+    inputFile,
+    '-all:all',
+    outputFile,
+  ]);
+
+  exiftool.on('error', (err) => {
+    callback(err);
+  });
+
+  exiftool.on('exit', (code) => {
+    if (code !== 0) {
+      callback(new Error(`exiftool exited with code ${code}`));
+      return;
+    }
+    callback(null);
+  });
+}
+
 function transcodeFile(filePath: string, callback: TranscodeCallback): void {
   const outputFile = filePath + '-transcoded.mp4';
 
@@ -188,6 +211,7 @@ function transcodeFile(filePath: string, callback: TranscodeCallback): void {
     '25',
     '-c:a',
     'aac',
+    '-y',
     outputFile,
   ]);
 
@@ -202,7 +226,16 @@ function transcodeFile(filePath: string, callback: TranscodeCallback): void {
       callback(null, new Error(`ffmpeg exited with code ${code}`));
       return;
     }
-    callback(outputFile, null);
+
+    copyMetadata(filePath, outputFile, (err) => {
+      if (err) {
+        console.error('Error copying metadata:', err);
+        deleteFile(outputFile);
+        callback(null, err);
+        return;
+      }
+      callback(outputFile, null);
+    });
   });
 };
 
