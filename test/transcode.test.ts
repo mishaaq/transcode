@@ -11,6 +11,18 @@ import FormData from 'form-data';
 import { app } from '../index.js';
 
 const inputFixturePath = path.resolve(process.cwd(), 'test', 'fixture', 'input.mp4');
+const workDir = path.join(process.cwd(), 'workdir');
+const tempDirs: string[] = [];
+
+function createTempDir(): string {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'transcode-test-'));
+  tempDirs.push(tempDir);
+  return tempDir;
+}
+
+function cleanupPath(targetPath: string): void {
+  fs.rmSync(targetPath, { recursive: true, force: true });
+}
 
 let server: ReturnType<typeof app.listen> | undefined;
 
@@ -32,6 +44,12 @@ test.after(async () => {
         resolve();
       });
     });
+  }
+
+  cleanupPath(workDir);
+
+  for (const tempDir of tempDirs) {
+    cleanupPath(tempDir);
   }
 });
 
@@ -87,7 +105,7 @@ test('POST /transcode uses the original filename stem for the download attachmen
 });
 
 test('POST /transcode preserves GPS and creation metadata when available', async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'transcode-metadata-'));
+  const tempDir = createTempDir();
   const sourcePath = path.join(tempDir, 'metadata-input.mp4');
   fs.copyFileSync(inputFixturePath, sourcePath);
 
@@ -148,8 +166,11 @@ test('POST /transcode preserves GPS and creation metadata when available', async
 
 test('POST /transcode deletes the uploaded temp file after streaming finishes', async () => {
   const buffer = fs.readFileSync(inputFixturePath);
-  const tempDir = os.tmpdir();
-  const beforeFileCount = fs.readdirSync(tempDir).filter((name) => /^\d+-file\.mp4$/.test(name)).length;
+  const inputPath = path.join(workDir, 'input.mp4');
+  const outputPath = path.join(workDir, 'input.mp4-transcoded.mp4');
+
+  assert.equal(fs.existsSync(inputPath), false);
+  assert.equal(fs.existsSync(outputPath), false);
 
   const address = server!.address();
   assert.ok(address && typeof address !== 'string');
@@ -171,7 +192,6 @@ test('POST /transcode deletes the uploaded temp file after streaming finishes', 
   const responseBody = Buffer.from(await response.body.arrayBuffer());
   assert.ok(responseBody.length > 0);
 
-  const afterFileCount = fs.readdirSync(tempDir).filter((name) => /^\d+-file\.mp4$/.test(name)).length;
-
-  assert.equal(afterFileCount, beforeFileCount);
+  assert.equal(fs.existsSync(inputPath), false);
+  assert.equal(fs.existsSync(outputPath), false);
 });

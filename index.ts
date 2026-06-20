@@ -14,8 +14,10 @@ type ErrorCallback = [outputFilePath: null, error: Error];
 
 type TranscodeCallback = (...args: SuccessCallback | ErrorCallback) => void;
 
-if (!fs.existsSync('/tmp/transcode')) {
-  fs.mkdirSync('/tmp/transcode', 0o777);
+const WORK_DIR = path.join(process.cwd(), 'workdir');
+
+if (!fs.existsSync(WORK_DIR)) {
+  fs.mkdirSync(WORK_DIR, { recursive: true });
 }
 
 app.get('/', (_req: Request, res: Response) => {
@@ -30,7 +32,7 @@ app.post('/transcode', (req: Request, res: Response) => {
   bb.on('file', (_name, fileStream, info) => {
     fileReceived = true;
     const { filename } = info;
-    const inputFilePath = path.join('/tmp/transcode', path.basename(filename));
+    const inputFilePath = path.join(WORK_DIR, path.basename(filename));
 
     const writeStream = fs.createWriteStream(inputFilePath);
     fileStream.pipe(writeStream);
@@ -174,16 +176,7 @@ function copyMetadata(inputFile: string, outputFile: string, callback: (err: Err
     'LargeFileSupport=1',
     '-TagsFromFile',
     inputFile,
-    '-Keys:all',
-    '-UserData:all',
-    '-CreateDate<CreateDate',
-    '-ModifyDate<ModifyDate',
-    '-Track*Date<Track*Date',
-    '-Media*Date<Media*Date',
-    '-Keys:CreationDate<CreateDate',
-    '-Keys:CreationDate<Keys:CreationDate',
-    '-Keys:GPSCoordinates<GPSCoordinates',
-    '-UserData:GPSCoordinates<GPSCoordinates',
+    '-all:all',
     outputFile,
   ]);
 
