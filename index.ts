@@ -197,6 +197,7 @@ function transcodeFile(filePath: string, callback: TranscodeCallback): void {
   const outputFile = filePath + '-transcoded.mp4';
 
   const ffmpeg = spawn('ffmpeg', [
+    '-nostdin',
     '-hwaccel',
     'qsv',
     '-hwaccel_output_format',
@@ -225,7 +226,7 @@ function transcodeFile(filePath: string, callback: TranscodeCallback): void {
     'hvc1',
     '-y',
     outputFile,
-  ]);
+  ], { stdio: ['ignore', 'ignore', 'inherit']});
 
   ffmpeg.on('error', (err) => {
     callback(null, err);
